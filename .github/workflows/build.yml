@@ -16,7 +16,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Flutter
@@ -26,19 +26,48 @@ jobs:
 
       - name: Build Project
         run: |
-          flutter create --org com.focusstudy --platforms=android app_project
-          cd app_project
-          if [ -d "../lib" ]; then cp -rf ../lib/* lib/; fi
-          if [ -f "../pubspec.yaml" ]; then cp -f ../pubspec.yaml .; fi
-          if [ -f "../AndroidManifest.xml" ]; then cp -f ../AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
-          if [ -f "../MainActivity.kt" ]; then find android/app/src/main/kotlin -name "MainActivity.kt" -exec cp -f ../MainActivity.kt {} \; ; fi
-          mkdir -p android/app/src/main/res/raw
-          if [ -f "../study_alarm.mp3" ]; then cp -f ../study_alarm.mp3 android/app/src/main/res/raw/study_alarm.mp3; else touch android/app/src/main/res/raw/study_alarm.mp3; fi
+          # Flutter project initialize
+          flutter create . --org com.focusstudy.app --project-name focus_study || true
+
+          # Create all required sub-folders
+          mkdir -p lib/services lib/state lib/ui lib/screens lib/models lib/data
+
+          # Copy files into expected folders automatically
+          cp lib/alarm_service.dart lib/services/ 2>/dev/null || true
+          cp lib/notification_service.dart lib/services/ 2>/dev/null || true
+          cp lib/focus_mode_service.dart lib/services/ 2>/dev/null || true
+          cp lib/study_controller.dart lib/state/ 2>/dev/null || true
+          cp lib/home_shell.dart lib/ui/ 2>/dev/null || true
+          cp lib/home_shell.dart lib/screens/ 2>/dev/null || true
+          cp lib/timer_screen.dart lib/ui/ 2>/dev/null || true
+          cp lib/timer_screen.dart lib/screens/ 2>/dev/null || true
+          cp lib/timetable_screen.dart lib/ui/ 2>/dev/null || true
+          cp lib/timetable_screen.dart lib/screens/ 2>/dev/null || true
+          cp lib/summary_screen.dart lib/ui/ 2>/dev/null || true
+          cp lib/summary_screen.dart lib/screens/ 2>/dev/null || true
+          cp lib/models.dart lib/models/ 2>/dev/null || true
+          cp lib/database_helper.dart lib/data/ 2>/dev/null || true
+
+          # Setup Android configuration files
+          if [ -f AndroidManifest.xml ]; then
+            mkdir -p android/app/src/main
+            cp AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          fi
+
+          if [ -f MainActivity.kt ]; then
+            find android/app/src/main -type d -name "kotlin" -o -name "java" | while read dir; do
+              target_dir="$dir/com/focusstudy/app"
+              mkdir -p "$target_dir"
+              cp MainActivity.kt "$target_dir/MainActivity.kt"
+            done
+          fi
+
+          # Get dependencies and compile release APK
           flutter pub get
           flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FocusStudy-APK
-          path: app_project/build/app/outputs/flutter-apk/app-release.apk
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
