@@ -27,55 +27,77 @@ jobs:
 
       - name: Build Project
         run: |
-          # 1. Initialize Flutter template
+          # 1. Initialize Flutter project structure
           flutter create . --org com.focusstudy.app --project-name focus_study || true
 
-          # 2. Setup lib folder structure
+          # 2. Ensure all project folders exist
           mkdir -p lib/services lib/state lib/ui lib/screens lib/models lib/data
-          cp lib/alarm_service.dart lib/services/ 2>/dev/null || true
-          cp lib/notification_service.dart lib/services/ 2>/dev/null || true
-          cp lib/focus_mode_service.dart lib/services/ 2>/dev/null || true
-          cp lib/study_controller.dart lib/state/ 2>/dev/null || true
-          cp lib/home_shell.dart lib/ui/ 2>/dev/null || true
-          cp lib/home_shell.dart lib/screens/ 2>/dev/null || true
-          cp lib/timer_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/timer_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/timetable_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/timetable_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/summary_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/summary_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/models.dart lib/models/ 2>/dev/null || true
-          cp lib/database_helper.dart lib/data/ 2>/dev/null || true
 
-          # 3. Clean duplicate MainActivity and configure Android files cleanly
+          # 3. Locate and move files to proper directories
+          find . -maxdepth 2 -name "alarm_service.dart" -exec cp {} lib/services/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "notification_service.dart" -exec cp {} lib/services/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "focus_mode_service.dart" -exec cp {} lib/services/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "study_controller.dart" -exec cp {} lib/state/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "home_shell.dart" -exec cp {} lib/ui/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "home_shell.dart" -exec cp {} lib/screens/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "timer_screen.dart" -exec cp {} lib/ui/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "timer_screen.dart" -exec cp {} lib/screens/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "timetable_screen.dart" -exec cp {} lib/ui/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "timetable_screen.dart" -exec cp {} lib/screens/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "summary_screen.dart" -exec cp {} lib/ui/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "summary_screen.dart" -exec cp {} lib/screens/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "models.dart" -exec cp {} lib/models/ \; 2>/dev/null || true
+          find . -maxdepth 2 -name "database_helper.dart" -exec cp {} lib/data/ \; 2>/dev/null || true
+
+          # 4. Patch the exact missing parameter in notification_service.dart
+          python3 -c "
+          import os, re
+          for root, dirs, files in os.walk('.'):
+              for file in files:
+                  if file.endswith('.dart'):
+                      path = os.path.join(root, file)
+                      with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                          content = f.read()
+                      if 'zonedSchedule(' in content and 'uiLocalNotificationDateInterpretation' not in content:
+                          content = re.sub(
+                              r'(\.zonedSchedule\s*\()',
+                              r'\1uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime, ',
+                              content
+                          )
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.write(content)
+                          print(f'Successfully patched: {path}')
+          "
+
+          # 5. Clean Android configuration and eliminate duplicate MainActivity
           if [ -f AndroidManifest.xml ]; then
             mkdir -p android/app/src/main
             cp AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           fi
 
           if [ -f MainActivity.kt ]; then
-            PKG=$(grep -E "^package " MainActivity.kt | head -n 1 | sed 's/package //' | tr -d ' ;')
-            if [ -z "$PKG" ]; then
+            PKG=\$(grep -E "^package " MainActivity.kt | head -n 1 | sed 's/package //' | tr -d ' ;')
+            if [ -z "\$PKG" ]; then
               PKG="com.focusstudy.app.focus_study"
-              sed -i "1s/^/package $PKG\n\n/" MainActivity.kt
+              sed -i "1s/^/package \$PKG\n\n/" MainActivity.kt
             fi
 
             rm -rf android/app/src/main/kotlin/*
             rm -rf android/app/src/main/java/*
 
-            PKG_DIR="android/app/src/main/kotlin/$(echo $PKG | tr '.' '/')"
-            mkdir -p "$PKG_DIR"
-            cp MainActivity.kt "$PKG_DIR/MainActivity.kt"
+            PKG_DIR="android/app/src/main/kotlin/\$(echo \$PKG | tr '.' '/')"
+            mkdir -p "\$PKG_DIR"
+            cp MainActivity.kt "\$PKG_DIR/MainActivity.kt"
 
-            sed -i "s/namespace = .*/namespace = \"$PKG\"/" android/app/build.gradle 2>/dev/null || true
-            sed -i "s/applicationId = .*/applicationId = \"$PKG\"/" android/app/build.gradle 2>/dev/null || true
+            sed -i "s/namespace = .*/namespace = \"\$PKG\"/" android/app/build.gradle 2>/dev/null || true
+            sed -i "s/applicationId = .*/applicationId = \"\$PKG\"/" android/app/build.gradle 2>/dev/null || true
           fi
 
-          # 4. Set Kotlin version to 1.9.24
+          # 6. Lock Kotlin version to 1.9.24
           sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle 2>/dev/null || true
           sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle 2>/dev/null || true
 
-          # 5. Build Release APK
+          # 7. Build Release APK
           flutter pub get
           flutter build apk --release
 
