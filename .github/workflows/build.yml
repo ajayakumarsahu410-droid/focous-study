@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Cleaned-up "Build Flutter APK" workflow
+#  NOTE: This assumes the repo is a *proper Flutter project* (has pubspec.yaml,
+#  lib/, android/, ios/ committed). All the folder-copying / manifest-copying /
+#  regex "auto-fix" hacks were removed — see comments at the bottom.
+# ─────────────────────────────────────────────────────────────────────────────
+
 name: Build Flutter APK
 
 on:
@@ -5,9 +12,14 @@ on:
   push:
     branches: [ main ]
 
+# Least-privilege: this workflow only reads the repo and uploads an artifact.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30          # safety net so a hung build can't burn minutes
 
     steps:
       - name: Checkout Code
@@ -22,105 +34,72 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
           channel: 'stable'
+          # Pin a version for reproducible builds instead of floating on "stable":
+          # flutter-version: '3.32.0'
+          cache: true            # caches the Flutter SDK + pub deps
 
-      - name: Build Project
-        run: |
-          # Flutter project initialize
-          flutter create . --org com.focusstudy.app --project-name focus_study || true
+      - name: Get dependencies
+        run: flutter pub get
 
-          # Create all required sub-folders
-          mkdir -p lib/services lib/state lib/ui lib/screens lib/models lib/data
+      # Optional, but catches real errors before a long build:
+      - name: Analyze
+        run: flutter analyze || true
 
-          # Copy files into expected folders
-          cp lib/alarm_service.dart lib/services/ 2>/dev/null || true
-          cp lib/notification_service.dart lib/services/ 2>/dev/null || true
-          cp lib/focus_mode_service.dart lib/services/ 2>/dev/null || true
-          cp lib/study_controller.dart lib/state/ 2>/dev/null || true
-          cp lib/home_shell.dart lib/ui/ 2>/dev/null || true
-          cp lib/home_shell.dart lib/screens/ 2>/dev/null || true
-          cp lib/timer_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/timer_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/timetable_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/timetable_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/summary_screen.dart lib/ui/ 2>/dev/null || true
-          cp lib/summary_screen.dart lib/screens/ 2>/dev/null || true
-          cp lib/models.dart lib/models/ 2>/dev/null || true
-          cp lib/database_helper.dart lib/data/ 2>/dev/null || true
-
-          # Auto-fix code compatibility issues
-          python3 -c "
-          import glob, re
-
-          for p in glob.glob('**/*.dart', recursive=True):
-              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
-              c2 = re.sub(r'\bCardTheme\(', 'CardThemeData(', c)
-              if c2 != c:
-                  with open(p, 'w', encoding='utf-8') as f:
-                      f.write(c2)
-
-          for p in glob.glob('**/*notification*.dart', recursive=True):
-              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
-              if 'zonedSchedule(' in c and 'uiLocalNotificationDateInterpretation' not in c:
-                  c2 = re.sub(
-                      r'(zonedSchedule\s*\()',
-                      r'\1uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime, ',
-                      c
-                  )
-                  with open(p, 'w', encoding='utf-8') as f:
-                      f.write(c2)
-          "
-
-          # Setup Android configuration files
-          if [ -f AndroidManifest.xml ]; then
-            mkdir -p android/app/src/main
-            cp AndroidManifest.xml android/app/src/main/AndroidManifest.xml
-          fi
-
-          if [ -f MainActivity.kt ]; then
-            sed -i 's/^package .*/package com.focusstudy.app/' MainActivity.kt
-            target_dir="android/app/src/main/kotlin/com/focusstudy/app"
-            mkdir -p "$target_dir"
-            cp MainActivity.kt "$target_dir/MainActivity.kt"
-          fi
-
-          # Force JVM target compatibility across all Gradle plugins
-          mkdir -p ~/.gradle
-          echo "kotlin.jvm.target.validation.mode=ignore" >> ~/.gradle/gradle.properties
-          echo "kotlin.jvm.target.validation.mode=ignore" >> android/gradle.properties
-
-          cat << 'EOF' >> android/build.gradle
-
-          allprojects {
-              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-                  kotlinOptions {
-                      jvmTarget = "1.8"
-                  }
-              }
-          }
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileOptions {
-                              sourceCompatibility JavaVersion.VERSION_1_8
-                              targetCompatibility JavaVersion.VERSION_1_8
-                          }
-                      }
-                  }
-              }
-          }
-          EOF
-
-          # Get dependencies and compile release APK
-          flutter pub get
-          flutter build apk --release
+      - name: Build Release APK
+        run: flutter build apk --release
+        # For smaller per-ABI APKs instead of one universal APK:
+        # run: flutter build apk --release --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Why the original hacks were removed / what to do instead
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  1. `flutter create . --org com.focusstudy.app ... || true`
+#     Only needed when the repo is NOT a real Flutter project. On a proper
+#     project it is redundant and can regenerate/overwrite platform files.
+#     Fix: commit a proper Flutter project once; don't scaffold in CI.
+#
+#  2. The `mkdir -p lib/services ...` + `cp` block
+#     Copies (doesn't move) classes into lib/ui/ AND lib/screens/ at the same
+#     time, leaves the originals in lib/, and updates zero import statements.
+#     At best it does nothing; at worst duplicate class names in two libraries
+#     cause ambiguous-import errors. Reorganize ONCE locally with `git mv` and
+#     fix the `import` lines, then commit the result.
+#
+#  3. The `zonedSchedule` regex
+#     Inserts `uiLocalNotificationDateInterpretation: ...` directly after
+#     `zonedSchedule(`, i.e. BEFORE any positional arguments — a Dart syntax
+#     error ("positional arguments must occur before named arguments").
+#     That parameter (and `UILocalNotificationDateInterpretation`) was also
+#     REMOVED from flutter_local_notifications in v10+ (current is v18/v19),
+#     so on modern deps it is a compile error. Delete this block; fix the
+#     notification code properly in source instead.
+#
+#  4. The `CardTheme(` -> `CardThemeData(` regex
+#     Directionally correct (Flutter >= 3.27 renamed CardTheme -> CardThemeData),
+#     but it rewrites every .dart file in the tree with a naive find/replace.
+#     Fine as a stopgap; better to fix the type names in source and delete the
+#     regex from CI.
+#
+#  5. Copying AndroidManifest.xml / MainActivity.kt from the repo root
+#     Only relevant for a loose-files repo. MainActivity.kt is the dangerous
+#     one: `--org com.focusstudy.app` generates package
+#     `com.focusstudy.app.focus_study`, so a file with any other `package`
+#     declaration copied into that folder won't compile. The generated
+#     MainActivity is all you need — don't copy one over it.
+#
+#  6. `kotlin.jvm.target.validation.mode=warning`
+#     Suppresses the JVM-target mismatch ERROR instead of fixing it. Proper fix:
+#     align compileOptions/kotlinOptions jvmTarget (17) in android/app/build.gradle.
+#
+#  7. Release APK is signed with the DEBUG key (no release keystore configured).
+#     Fine for testing/sideloading, NOT for Play Store. Add a release signing
+#     config + GitHub secrets when you need store-ready builds.
+# ─────────────────────────────────────────────────────────────────────────────
