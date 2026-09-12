@@ -52,7 +52,6 @@ jobs:
           python3 -c "
           import glob, re
 
-          # Fix 1: CardTheme -> CardThemeData
           for p in glob.glob('**/*.dart', recursive=True):
               with open(p, 'r', encoding='utf-8', errors='ignore') as f:
                   c = f.read()
@@ -61,7 +60,6 @@ jobs:
                   with open(p, 'w', encoding='utf-8') as f:
                       f.write(c2)
 
-          # Fix 2: Add missing parameter in zonedSchedule
           for p in glob.glob('**/*notification*.dart', recursive=True):
               with open(p, 'r', encoding='utf-8', errors='ignore') as f:
                   c = f.read()
@@ -88,6 +86,11 @@ jobs:
               cp MainActivity.kt "$target_dir/MainActivity.kt"
             done
           fi
+
+          # Fix JVM target compatibility check across Gradle
+          mkdir -p ~/.gradle
+          echo "kotlin.jvm.target.validation.mode=warning" >> ~/.gradle/gradle.properties
+          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
 
           # Get dependencies and compile release APK
           flutter pub get
