@@ -47,32 +47,7 @@ jobs:
           cp lib/models.dart lib/models/ 2>/dev/null || true
           cp lib/database_helper.dart lib/data/ 2>/dev/null || true
 
-          # 3. Auto-fix Flutter 3 compatibility in Dart
-          python3 -c "
-          import glob, re
-
-          for p in glob.glob('**/*.dart', recursive=True):
-              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
-              c2 = re.sub(r'\bCardTheme\(', 'CardThemeData(', c)
-              if c2 != c:
-                  with open(p, 'w', encoding='utf-8') as f:
-                      f.write(c2)
-
-          for p in glob.glob('**/*notification*.dart', recursive=True):
-              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
-                  c = f.read()
-              if 'zonedSchedule(' in c and 'uiLocalNotificationDateInterpretation' not in c:
-                  c2 = re.sub(
-                      r'(zonedSchedule\s*\()',
-                      r'\1uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime, ',
-                      c
-                  )
-                  with open(p, 'w', encoding='utf-8') as f:
-                      f.write(c2)
-          "
-
-          # 4. Clean duplicate MainActivity and configure Android files cleanly
+          # 3. Clean duplicate MainActivity and configure Android files cleanly
           if [ -f AndroidManifest.xml ]; then
             mkdir -p android/app/src/main
             cp AndroidManifest.xml android/app/src/main/AndroidManifest.xml
@@ -96,11 +71,11 @@ jobs:
             sed -i "s/applicationId = .*/applicationId = \"$PKG\"/" android/app/build.gradle 2>/dev/null || true
           fi
 
-          # 5. Fix Kotlin Gradle Plugin Version to 1.9.24 as requested by Flutter Fix
+          # 4. Set Kotlin version to 1.9.24
           sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle 2>/dev/null || true
           sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle 2>/dev/null || true
 
-          # 6. Build Release APK
+          # 5. Build Release APK
           flutter pub get
           flutter build apk --release
 
