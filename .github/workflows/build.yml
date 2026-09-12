@@ -32,7 +32,7 @@ jobs:
           # Create all required sub-folders
           mkdir -p lib/services lib/state lib/ui lib/screens lib/models lib/data
 
-          # Copy files into expected folders automatically
+          # Copy files into expected folders
           cp lib/alarm_service.dart lib/services/ 2>/dev/null || true
           cp lib/notification_service.dart lib/services/ 2>/dev/null || true
           cp lib/focus_mode_service.dart lib/services/ 2>/dev/null || true
@@ -47,6 +47,33 @@ jobs:
           cp lib/summary_screen.dart lib/screens/ 2>/dev/null || true
           cp lib/models.dart lib/models/ 2>/dev/null || true
           cp lib/database_helper.dart lib/data/ 2>/dev/null || true
+
+          # Auto-fix code compatibility issues
+          python3 -c "
+          import glob, re
+
+          # Fix 1: CardTheme -> CardThemeData
+          for p in glob.glob('**/*.dart', recursive=True):
+              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                  c = f.read()
+              c2 = re.sub(r'\bCardTheme\(', 'CardThemeData(', c)
+              if c2 != c:
+                  with open(p, 'w', encoding='utf-8') as f:
+                      f.write(c2)
+
+          # Fix 2: Add missing parameter in zonedSchedule
+          for p in glob.glob('**/*notification*.dart', recursive=True):
+              with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                  c = f.read()
+              if 'zonedSchedule(' in c and 'uiLocalNotificationDateInterpretation' not in c:
+                  c2 = re.sub(
+                      r'(zonedSchedule\s*\()',
+                      r'\1uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime, ',
+                      c
+                  )
+                  with open(p, 'w', encoding='utf-8') as f:
+                      f.write(c2)
+          "
 
           # Setup Android configuration files
           if [ -f AndroidManifest.xml ]; then
