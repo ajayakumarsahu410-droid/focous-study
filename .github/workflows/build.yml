@@ -22,6 +22,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.22.2'
           channel: 'stable'
 
       - name: Build Project
@@ -80,17 +81,39 @@ jobs:
           fi
 
           if [ -f MainActivity.kt ]; then
-            find android/app/src/main -type d -name "kotlin" -o -name "java" | while read dir; do
-              target_dir="$dir/com/focusstudy/app"
-              mkdir -p "$target_dir"
-              cp MainActivity.kt "$target_dir/MainActivity.kt"
-            done
+            sed -i 's/^package .*/package com.focusstudy.app/' MainActivity.kt
+            target_dir="android/app/src/main/kotlin/com/focusstudy/app"
+            mkdir -p "$target_dir"
+            cp MainActivity.kt "$target_dir/MainActivity.kt"
           fi
 
-          # Fix JVM target compatibility check across Gradle
+          # Force JVM target compatibility across all Gradle plugins
           mkdir -p ~/.gradle
-          echo "kotlin.jvm.target.validation.mode=warning" >> ~/.gradle/gradle.properties
-          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
+          echo "kotlin.jvm.target.validation.mode=ignore" >> ~/.gradle/gradle.properties
+          echo "kotlin.jvm.target.validation.mode=ignore" >> android/gradle.properties
+
+          cat << 'EOF' >> android/build.gradle
+
+          allprojects {
+              tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                  kotlinOptions {
+                      jvmTarget = "1.8"
+                  }
+              }
+          }
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileOptions {
+                              sourceCompatibility JavaVersion.VERSION_1_8
+                              targetCompatibility JavaVersion.VERSION_1_8
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
 
           # Get dependencies and compile release APK
           flutter pub get
