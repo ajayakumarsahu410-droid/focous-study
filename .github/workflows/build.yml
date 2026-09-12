@@ -1,0 +1,44 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Build Project
+        run: |
+          flutter create --org com.focusstudy --platforms=android app_project
+          cd app_project
+          if [ -d "../lib" ]; then cp -rf ../lib/* lib/; fi
+          if [ -f "../pubspec.yaml" ]; then cp -f ../pubspec.yaml .; fi
+          if [ -f "../AndroidManifest.xml" ]; then cp -f ../AndroidManifest.xml android/app/src/main/AndroidManifest.xml; fi
+          if [ -f "../MainActivity.kt" ]; then find android/app/src/main/kotlin -name "MainActivity.kt" -exec cp -f ../MainActivity.kt {} \; ; fi
+          mkdir -p android/app/src/main/res/raw
+          if [ -f "../study_alarm.mp3" ]; then cp -f ../study_alarm.mp3 android/app/src/main/res/raw/study_alarm.mp3; else touch android/app/src/main/res/raw/study_alarm.mp3; fi
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FocusStudy-APK
+          path: app_project/build/app/outputs/flutter-apk/app-release.apk
