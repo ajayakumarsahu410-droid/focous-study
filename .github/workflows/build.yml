@@ -79,31 +79,26 @@ jobs:
           fi
 
           if [ -f MainActivity.kt ]; then
-            # Detect package name from MainActivity.kt or use default
             PKG=$(grep -E "^package " MainActivity.kt | head -n 1 | sed 's/package //' | tr -d ' ;')
             if [ -z "$PKG" ]; then
               PKG="com.focusstudy.app.focus_study"
               sed -i "1s/^/package $PKG\n\n/" MainActivity.kt
             fi
 
-            # Delete all auto-generated template MainActivity files to prevent duplicates
             rm -rf android/app/src/main/kotlin/*
             rm -rf android/app/src/main/java/*
 
-            # Place user's MainActivity in exact package path
             PKG_DIR="android/app/src/main/kotlin/$(echo $PKG | tr '.' '/')"
             mkdir -p "$PKG_DIR"
             cp MainActivity.kt "$PKG_DIR/MainActivity.kt"
 
-            # Sync namespace in build.gradle
             sed -i "s/namespace = .*/namespace = \"$PKG\"/" android/app/build.gradle 2>/dev/null || true
             sed -i "s/applicationId = .*/applicationId = \"$PKG\"/" android/app/build.gradle 2>/dev/null || true
           fi
 
-          # 5. Disable strict JVM validation
-          mkdir -p ~/.gradle
-          echo "kotlin.jvm.target.validation.mode=ignore" >> ~/.gradle/gradle.properties
-          echo "kotlin.jvm.target.validation.mode=ignore" >> android/gradle.properties
+          # 5. Fix Kotlin Gradle Plugin Version to 1.9.24 as requested by Flutter Fix
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle 2>/dev/null || true
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle 2>/dev/null || true
 
           # 6. Build Release APK
           flutter pub get
